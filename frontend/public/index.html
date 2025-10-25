@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="id">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta
+      name="description"
+      content="Tanyo UNAND Asisten AI untuk pertanyaan seputar peraturan kampus dan pemerintah"
+    />
+    <title>Chatbot UNAND</title>
+    <!-- Google Identity Services -->
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
+    <script src="/env.js"></script>
+    <script src="/env.js"></script>
+    <script>
+      // Ensure Google script is loaded
+      window.addEventListener("load", function () {
+        console.log("Window loaded, checking Google script...");
+        console.log("Google available:", !!window.google);
+        if (window.google && window.google.accounts) {
+          console.log("Google Identity Services loaded successfully");
+        } else {
+          console.error("Google Identity Services failed to load");
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

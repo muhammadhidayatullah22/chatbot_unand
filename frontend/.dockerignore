@@ -1,0 +1,35 @@
+==================================================
+IGNORING NODE MODULES AND BUILD ARTIFACTS
+==================================================
+1. Output Build Lokal dan Cache (WAJIB DIHAPUS)
+Ini adalah hasil build lokal yang tidak boleh disalin.
+build/
+.next/
+dist/
+
+2. Dependencies dan Cache (WAJIB DIHAPUS)
+Kami akan menginstal ulang node_modules di dalam container, jadi
+jangan salin folder node_modules dari host (bisa sangat besar).
+node_modules/
+npm-debug.log*
+npm-debug.log
+.npm/
+
+3. Direktori Development & Versi
+.git
+.gitignore
+.editorconfig
+.vscode
+.idea
+
+4. File Environment Lokal (Untuk Keamanan)
+Rahasia harus disuntikkan saat runtime (docker run -e)
+.env
+.env.local
+.env.development
+.env.production
+
+5. File/Folder yang dibuat oleh OS atau Tooling
+Menghapus ini untuk menghindari error COPY pada sistem Windows/Mac
+.DS_Store
+
