@@ -3,7 +3,7 @@ Async Embedding Service - Non-blocking embedding generation
 """
 import asyncio
 import numpy as np
-import google.generativeai as genai
+from openai import OpenAI
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 import logging
@@ -13,25 +13,22 @@ logger = logging.getLogger(__name__)
 class EmbeddingService:
     """Service untuk generate embedding secara async"""
     
-    def __init__(self, api_key: str, model: str = "models/text-embedding-004", max_workers: int = 4):
+    def __init__(self, api_key: str, model: str = "text-embedding-3-large", max_workers: int = 4):
         self.api_key = api_key
         self.model = model
         self.executor = ThreadPoolExecutor(max_workers=max_workers)
-        genai.configure(api_key=api_key)
+        self.client = OpenAI(base_url="https://openrouter.ai/api/v1", api_key=api_key)
     
     def _generate_embedding_sync(self, text: str, task_type: str = "RETRIEVAL_QUERY") -> np.ndarray:
         """Generate embedding secara synchronous (untuk thread pool)"""
         try:
-            response = genai.embed_content(
+            response = self.client.embeddings.create(
                 model=self.model,
-                content=text,
-                task_type=task_type
+                input=text,
             )
-            
-            if not isinstance(response, dict) or 'embedding' not in response:
+            if not response.data or not getattr(response.data[0], 'embedding', None):
                 raise ValueError(f"Unexpected response format: {response}")
-            
-            return np.array(response['embedding']).astype('float32')
+            return np.array(response.data[0].embedding).astype('float32')
         except Exception as e:
             logger.error(f"Error generating embedding: {e}")
             raise

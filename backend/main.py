@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Depends, Header, s
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
-import google.generativeai as genai
+from openai import OpenAI
 from docx import Document
 import faiss
 import numpy as np
@@ -27,19 +27,20 @@ from collections import OrderedDict
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 load_dotenv()
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-if not GEMINI_API_KEY or GEMINI_API_KEY.startswith("AIzaSyBJmXOKnbJVXoyW"):
-    GEMINI_API_KEY = "AIzaSyDA4OyUkrsOGbx9iyjeZaHSH3PJ3D7VDDU"
+# OpenRouter / DeepSeek configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY not found. Please set it in environment or .env file.")
 
+# Instantiate OpenAI-compatible client for OpenRouter
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+)
 
-
-if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY not found. Please check your .env file or environment variables.")
-
-genai.configure(api_key=GEMINI_API_KEY)
-
-EMBEDDING_MODEL = "models/text-embedding-004"
-GENERATIVE_MODEL = "gemini-2.5-flash"
+# Models (overridable via env)
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
+GENERATIVE_MODEL = os.getenv("CHAT_MODEL", "tngtech/deepseek-r1t2-chimera:free")
 VECTOR_DB_DIR = os.path.join(os.path.dirname(__file__), "vector_db")
 FAISS_INDEX_PATH = os.path.join(VECTOR_DB_DIR, "faiss_index.bin")
 DOC_CHUNKS_PATH = os.path.join(VECTOR_DB_DIR, "doc_chunks.json")
@@ -47,7 +48,6 @@ DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 faiss_index = None
 doc_chunks = []
-generative_model = None
 
 # --- In-Memory Cache for Query Responses (LRU Cache) ---
 class QueryCache:
@@ -154,18 +154,33 @@ def chunk_text(text, max_chars=1000, overlap=100):
     return chunks
 
 def generate_embeddings_batch(texts: List[str], task_type="RETRIEVAL_DOCUMENT") -> List[List[float]]:
-    """Generates embeddings for a list of texts in batches."""
-    embeddings = []
+    """Generates embeddings for a list of texts in batches via OpenRouter embeddings API."""
+    embeddings: List[List[float]] = []
     batch_size = 50
     for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i:i+batch_size]
+        batch_texts = texts[i:i + batch_size]
         try:
-            results = genai.embed_content(model=EMBEDDING_MODEL, content=batch_texts, task_type=task_type)
-            embeddings.extend(results['embedding'])
+            resp = client.embeddings.create(
+                model=EMBEDDING_MODEL,  # ✅ Sudah benar
+                input=batch_texts,
+            )
+            batch_embeddings = [item.embedding for item in resp.data]
+            embeddings.extend(batch_embeddings)
         except Exception as e:
             print(f"Error generating embeddings for batch (index {i}): {e}")
             traceback.print_exc()
-            embeddings.extend([np.zeros(768).tolist()] * len(batch_texts))
+            # ❌ MASALAH: Fallback ke 1536, harusnya dinamis!
+            # Ganti baris ini:
+            # embeddings.extend([np.zeros(1536).tolist()] * len(batch_texts))
+            
+            # ✅ PERBAIKAN: Dapatkan dimensi dari model yang digunakan
+            if EMBEDDING_MODEL == "text-embedding-3-large":
+                dim = 3072
+            elif EMBEDDING_MODEL == "text-embedding-3-small":
+                dim = 1536
+            else:
+                dim = 1536  # Default fallback
+            embeddings.extend([np.zeros(dim).tolist()] * len(batch_texts))
     return embeddings
 
 async def preprocess_documents_and_build_index():
@@ -237,9 +252,8 @@ async def preprocess_documents_and_build_index():
     print("Document pre-processing complete. FAISS index created/updated and saved.")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global generative_model
-    generative_model = genai.GenerativeModel(GENERATIVE_MODEL)
-    print("Gemini generative model loaded.")
+    # Client already initialized globally
+    print("OpenRouter client initialized. Using model for chat:", GENERATIVE_MODEL)
 
     create_tables()
     print("Database tables created/verified.")
@@ -559,15 +573,26 @@ async def chat_with_rag(request: ChatRequest, db: Session = Depends(get_db), cur
         )
 
     try:
-        # 1. Generate embedding for the query
-        # genai.embed_content is synchronous, not async
-        query_embedding_response = genai.embed_content(model=EMBEDDING_MODEL, content=query_text, task_type="RETRIEVAL_QUERY")
-        
-        # Validasi output dari genai.embed_content
-        if not isinstance(query_embedding_response, dict) or 'embedding' not in query_embedding_response:
-            raise ValueError(f"Unexpected response format from embedding API: {query_embedding_response}")
+        # 1. Generate embedding for the query via OpenRouter
+        query_embed_resp = client.embeddings.create(
+            model=EMBEDDING_MODEL,
+            input=query_text,
+        )
+        if not query_embed_resp.data or not getattr(query_embed_resp.data[0], 'embedding', None):
+            raise ValueError(f"Unexpected response format from embedding API: {query_embed_resp}")
 
-        query_embedding = np.array(query_embedding_response['embedding']).astype('float32').reshape(1, -1)
+        query_vector = np.array(query_embed_resp.data[0].embedding).astype('float32')
+        index_dim = faiss_index.d
+        if query_vector.shape[0] != index_dim:
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Dimensi embedding query ({query_vector.shape[0]}) tidak cocok dengan index ({index_dim}). "
+                    f"Mohon rebuild index menggunakan EMBEDDING_MODEL yang sama dengan saat query: {EMBEDDING_MODEL}."
+                ),
+            )
+
+        query_embedding = query_vector.reshape(1, -1)
 
         # 2. Search FAISS index for relevant chunks
         k = 8 # Optimized: reduced from 15 to 8 for faster processing
@@ -772,17 +797,20 @@ Informasi: [Penjelasan 2-3 kalimat tentang apa yang dijelaskan dokumen ini terka
 
 KUALITAS OUTPUT: Pastikan jawaban sangat terstruktur, mudah dibaca, dan profesional seperti dokumen resmi universitas."""
 
-        # Single unified API call (Optimized from 11 separate calls!)
-        print(f"[OPTIMIZATION] Using unified prompt - single API call instead of 11 separate calls")
-        unified_response = generative_model.generate_content(unified_prompt)
-        
-        if not unified_response.text:
+        # Single unified API call using OpenRouter Chat Completions
+        print(f"[OPTIMIZATION] Using unified prompt - single API call via OpenRouter Chat Completions")
+        completion = client.chat.completions.create(
+            model=GENERATIVE_MODEL,
+            messages=[{"role": "user", "content": unified_prompt}],
+        )
+        response_text = (completion.choices[0].message.content if completion and completion.choices else None)
+
+        if not response_text:
             bot_response = "Maaf, saya tidak dapat menghasilkan jawaban yang relevan saat ini."
             summary = None
             suggestions = None
             sources = []
         else:
-            response_text = unified_response.text
             
             # Parse structured response
             # Extract main answer (between === JAWABAN UTAMA === and === KESIMPULAN ===)
