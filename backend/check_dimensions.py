@@ -15,8 +15,9 @@ if os.path.exists(index_path):
     print(f"📈 Total vectors: {index.ntotal}")
     
     # Expected dimension
-    embedding_model = os.getenv("EMBEDDING_MODEL", "text-embedding-3-large")
-    expected_dim = 3072 if "3-large" in embedding_model else 1536
+    embedding_model = os.getenv("EMBEDDING_MODEL", "nomic-ai/nomic-embed-text-v1.5")
+    # Standardize to 768-dim embeddings (Nomic)
+    expected_dim = 768
     
     if index.d == expected_dim:
         print(f"✅ Dimension matches! ({index.d} == {expected_dim})")

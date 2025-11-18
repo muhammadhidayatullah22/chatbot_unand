@@ -175,7 +175,7 @@ const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID ||
           )}
 
           {/* Google Sign-In Button Container */}
-          <div className="mb-4">
+          <div className="justify-center mb-4">
             <div ref={googleButtonRef} className="w-full"></div>
           </div>
 

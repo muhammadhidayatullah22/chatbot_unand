@@ -34,14 +34,16 @@ const getIsAdminDomain = () => {
     return false; // Menghindari error saat server-side rendering (jika ada)
   }
   const hostname = window.location.hostname;
+  const path = window.location.pathname || "";
 
   // Ambil domain admin dari environment variable atau hardcode
   // Pastikan Anda menambahkan REACT_APP_ADMIN_DOMAIN di docker-compose.yml
   const adminDomain =
-    process.env.REACT_APP_ADMIN_DOMAIN || "admin.difunand.cloud";
+    process.env.REACT_APP_ADMIN_DOMAIN || "http://localhost:3001";
 
   // Juga periksa untuk pengembangan lokal jika perlu
-  return hostname === adminDomain;
+  // Di dev lokal, jika path dimulai dengan /admin maka pakai AdminRoutes
+  return hostname === adminDomain || path.startsWith("/admin");
 };
 
 // --- Komponen yang ada dipindahkan dan disesuaikan ---

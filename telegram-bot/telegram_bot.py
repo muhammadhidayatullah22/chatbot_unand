@@ -12,8 +12,8 @@ load_dotenv()
 
 # --- Konfigurasi ---
 # Default token di-set dari bot baru "Tanyo Unand". Disarankan override via env saat deploy.
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "7977126581:AAGuPriDsRyInaNjR34_duG5DWWNbfu6V4E")
-BACKEND_URL = os.getenv("BACKEND_URL", "https://api-chatbot.difunand.cloud")  # URL backend FastAPI
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "8282030014:AAH2IQ9xTH-KBdf2aXZWtf6KPW6Ni8QpfaE")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")  # URL backend FastAPI
 
 # Konfigurasi logging
 logging.basicConfig(
@@ -69,7 +69,18 @@ class BackendClient:
                 json=payload
             ) as response:
                 if response.status == 200:
-                    return await response.json()
+                    # Backend bisa mengembalikan JSON atau stream (text/event-stream)
+                    content_type = response.headers.get("Content-Type", "").lower()
+                    if content_type.startswith("application/json"):
+                        return await response.json()
+                    # Jika streaming, baca sebagai teks penuh
+                    if content_type.startswith("text/event-stream") or content_type.startswith("text/plain"):
+                        text_body = await response.text()
+                        return {
+                            "response": text_body or "",
+                            "session_id": session_id or "",
+                            "sources": []
+                        }
                 else:
                     error_text = await response.text()
                     logger.error(f"Backend error {response.status}: {error_text}")

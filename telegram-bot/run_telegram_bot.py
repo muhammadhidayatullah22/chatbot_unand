@@ -26,8 +26,7 @@ def check_environment():
     """Cek environment variables yang diperlukan"""
     required_vars = {
         "TELEGRAM_BOT_TOKEN": "Token bot Telegram dari BotFather (Tanyo Unand)",
-        "GEMINI_API_KEY": "API Key Google Gemini",
-        "BACKEND_URL": "URL backend FastAPI (mis. https://api-chatbot.difunand.cloud)",
+        "BACKEND_URL": "URL backend FastAPI (mis. http://localhost:8001)",
     }
     
     missing_vars = []
@@ -47,7 +46,7 @@ def print_startup_info():
     """Print informasi startup"""
     print("🤖 Tanyo Unand - Chatbot Telegram")
     print("=" * 50)
-    print(f"Backend URL: {os.getenv('BACKEND_URL', 'https://api-chatbot.difunand.cloud')}")
+    print(f"Backend URL: {os.getenv('BACKEND_URL', 'http://localhost:8001')}")
     print(f"Bot Token: {os.getenv('TELEGRAM_BOT_TOKEN', 'Not set')[:20]}...")
     print("=" * 50)
     print("📋 Pastikan:")
